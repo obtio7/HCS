@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#f7f7f7">
+  <title>HCS</title>
+  <link rel="stylesheet" href="css/style.css">
+  
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+  <script>
+    // Initialize Firebase
+    const firebaseConfig = {
+      apiKey: "AIzaSyCB6z3EFs2n-YL5DAD3VOArtuHL8hjm768",
+      authDomain: "hcs-game.firebaseapp.com",
+      databaseURL: "https://hcs-game-default-rtdb.firebaseio.com",
+      projectId: "hcs-game",
+      storageBucket: "hcs-game.firebasestorage.app",
+      messagingSenderId: "203785199014",
+      appId: "1:203785199014:web:da150b1bac3ed513958367"
+    };
+    firebase.initializeApp(firebaseConfig);
+    window.firebaseDB = firebase.database();
+  </script>
+</head>
+<body>
+  <!-- Start screen video background -->
+  <video id="start-video" autoplay loop muted playsinline>
+    <source src="assets/videos/start-background.mp4" type="video/mp4">
+  </video>
+  
+  <!-- Game over GIF -->
+  <img id="gameover-gif" src="assets/videos/gameover1.gif" alt="Game Over" class="hidden">
+  
+  <!-- Player 4 GIF overlay (for animated GIF support) -->
+  <img id="player4-gif" class="player-gif hidden" alt="Player">
+  
+  <canvas id="game-canvas"></canvas>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

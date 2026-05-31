@@ -97,9 +97,9 @@ export const CONFIG = {
     videos: [
       'assets/videos/gameover1.mp4',
       'assets/videos/gameover2.mp4',
-      'assets/videos/gameover3.mp4',
-      'assets/videos/gameover4.mp4',
-      'assets/videos/gameover5.mp4'
+      //'assets/videos/gameover3.mp4',
+      //'assets/videos/gameover4.mp4',
+      //'assets/videos/gameover5.mp4'
     ]
   },
   timing: {

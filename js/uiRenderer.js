@@ -6,7 +6,9 @@ export class UIRenderer {
     this._width = logicalWidth || canvas.width;
     this._height = logicalHeight || canvas.height;
     this._muteButtonBounds = { x: 0, y: 0, width: 30, height: 30 };
+    this._chatButtonBounds = { x: 0, y: 0, width: 30, height: 30 };
     this._playAgainBounds = { x: 0, y: 0, width: 0, height: 0 };
+    this._switchPlayerBounds = { x: 0, y: 0, width: 0, height: 0 };
     
     // Character selection
     this._characters = CONFIG.sprites.players || [];
@@ -14,16 +16,65 @@ export class UIRenderer {
     this._leftArrowBounds = { x: 0, y: 0, width: 0, height: 0 };
     this._rightArrowBounds = { x: 0, y: 0, width: 0, height: 0 };
 
-    // Game over video elements (multiple for random selection)
-    this._gameOverVideos = [];
-    this._currentVideo = null;
+    // Game over GIF element (from HTML)
+    this._gameOverGif = document.getElementById('gameover-gif');
     this._gameOverActive = false;
+    
+    // Card collection popup notifications
+    this._popups = [];
+    
+    // List of available game over GIFs (add more paths here as you upload them)
+    this._gameOverGifs = [
+      'assets/videos/gameover1.gif',
+      'assets/videos/gameover2.gif',
+      // 'assets/videos/gameover3.gif',
+      // 'assets/videos/gameover4.gif',
+      // 'assets/videos/gameover5.gif',
+    ];
+    
+    // Player-specific game over GIFs (use these instead of random for specific players)
+    this._playerGameOverGifs = {
+      'player1': 'assets/videos/gameover1.gif',         // Jewasaur's game over clip
+      'player2': 'assets/videos/gameover-player2.gif',  // Jewgoblin's special game over clip
+      'player3': 'assets/videos/gameover-player3.gif',  // Jewman's special game over clip
+      'player4': 'assets/videos/gameover-player4.gif'   // Big Yahu's special game over clip
+    };
+    
+    // Calculate initial scale factor
+    this._updateScaleFactor();
+  }
 
-    this._initGameOverVideos();
+  /**
+   * Calculate responsive scale factor based on screen size.
+   * Uses a simpler approach - scale based on smaller dimension.
+   */
+  _updateScaleFactor() {
+    // Base the scale on the smaller dimension to ensure UI fits
+    const minDimension = Math.min(this._width, this._height);
+    
+    // Scale factor: 1.0 at 800px, scales proportionally
+    // This ensures UI elements are readable on all screen sizes
+    this._scaleFactor = Math.max(0.7, Math.min(1.5, minDimension / 800));
+  }
+
+  /**
+   * Get responsive font size based on base size and scale factor.
+   */
+  _fontSize(baseSize) {
+    return Math.max(10, Math.round(baseSize * this._scaleFactor));
+  }
+
+  /**
+   * Get responsive dimension based on base size and scale factor.
+   */
+  _scale(baseSize) {
+    return Math.max(10, Math.round(baseSize * this._scaleFactor));
   }
 
   get muteButtonBounds() { return this._muteButtonBounds; }
+  get chatButtonBounds() { return this._chatButtonBounds; }
   get playAgainBounds() { return this._playAgainBounds; }
+  get switchPlayerBounds() { return this._switchPlayerBounds; }
   get leftArrowBounds() { return this._leftArrowBounds; }
   get rightArrowBounds() { return this._rightArrowBounds; }
   get selectedCharacterId() { 
@@ -42,95 +93,160 @@ export class UIRenderer {
   selectNextCharacter() {
     if (this._characters.length > 0) {
       this._selectedCharacterIndex = (this._selectedCharacterIndex + 1) % this._characters.length;
+      console.log(`Character switched to: ${this._selectedCharacterIndex + 1}/${this._characters.length} - ${this.selectedCharacterName}`);
     }
   }
 
-  _initGameOverVideos() {
-    const videos = CONFIG.gameOver?.videos || [];
-    
-    // Preload all videos
-    for (const videoPath of videos) {
-      const video = document.createElement('video');
-      video.src = videoPath;
-      video.loop = true;
-      video.muted = true; // muted so it autoplays without issues
-      video.playsInline = true;
-      video.preload = 'auto';
+  /** Show a card collection popup */
+  showCardPopup(cardType) {
+    const popup = {
+      type: cardType,
+      timer: 2, // 2 seconds display
+      y: this._height * 0.4, // Start position
+      alpha: 1
+    };
+    this._popups.push(popup);
+  }
+
+  /** Update popups (call from game update) */
+  updatePopups(deltaTime) {
+    for (let i = this._popups.length - 1; i >= 0; i--) {
+      const popup = this._popups[i];
+      popup.timer -= deltaTime;
+      popup.y -= 30 * deltaTime; // Float upward
+      popup.alpha = Math.min(1, popup.timer); // Fade out
       
-      video._ready = false;
-      video.addEventListener('canplay', () => {
-        video._ready = true;
-      });
-      video.addEventListener('error', () => {
-        console.warn(`Game over video failed to load: ${videoPath}`);
-        video._ready = false;
-      });
-      
-      this._gameOverVideos.push(video);
+      if (popup.timer <= 0) {
+        this._popups.splice(i, 1);
+      }
     }
   }
 
-  /** Call when game over starts — picks a random video and starts it */
-  showGameOver() {
+  /** Render card collection popups */
+  renderPopups(ctx) {
+    for (const popup of this._popups) {
+      ctx.save();
+      ctx.globalAlpha = popup.alpha;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      
+      let text, color, emoji;
+      if (popup.type === 'trump') {
+        text = 'TRUMP CARD COLLECTED!';
+        color = '#ffd700';
+        emoji = '🃏';
+      } else if (popup.type === 'bigstin') {
+        text = 'BIGSTIN CARD COLLECTED!';
+        color = '#9c27b0';
+        emoji = '👻';
+      }
+      
+      // Background box - responsive sizing
+      const boxWidth = this._scale(300);
+      const boxHeight = this._scale(55);
+      const boxX = this._width / 2 - boxWidth / 2;
+      const boxY = popup.y - boxHeight / 2;
+      
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+      ctx.beginPath();
+      ctx.roundRect(boxX, boxY, boxWidth, boxHeight, this._scale(10));
+      ctx.fill();
+      
+      // Border
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      
+      // Text - responsive font
+      ctx.fillStyle = color;
+      ctx.font = `bold ${this._fontSize(20)}px Arial, sans-serif`;
+      ctx.fillText(`${emoji} ${text}`, this._width / 2, popup.y);
+      
+      ctx.restore();
+    }
+  }
+
+  /** Call when game over starts — shows a random GIF (or player-specific GIF) */
+  showGameOver(playerId = null) {
     this._gameOverActive = true;
     
-    // Filter to only ready videos
-    const readyVideos = this._gameOverVideos.filter(v => v._ready);
+    // Get GIF element if not already cached
+    if (!this._gameOverGif) {
+      this._gameOverGif = document.getElementById('gameover-gif');
+    }
     
-    if (readyVideos.length > 0) {
-      // Pick a random video
-      const randomIndex = Math.floor(Math.random() * readyVideos.length);
-      this._currentVideo = readyVideos[randomIndex];
-      this._currentVideo.currentTime = 0;
-      this._currentVideo.play().catch(() => {});
-    } else {
-      this._currentVideo = null;
+    if (this._gameOverGif) {
+      let selectedGif;
+      
+      // Check if this player has a specific game over GIF
+      if (playerId && this._playerGameOverGifs[playerId]) {
+        selectedGif = this._playerGameOverGifs[playerId];
+        console.log(`Using player-specific game over GIF for ${playerId}: ${selectedGif}`);
+      } else {
+        // Select a random GIF from the available list
+        const randomIndex = Math.floor(Math.random() * this._gameOverGifs.length);
+        selectedGif = this._gameOverGifs[randomIndex];
+      }
+      
+      // Set the new source (this also resets the animation)
+      this._gameOverGif.src = selectedGif;
+      this._gameOverGif.classList.remove('hidden');
+      this._gameOverGif.classList.add('visible');
     }
   }
 
-  /** Call when restarting — stops the video */
+  /** Call when restarting — hides GIF */
   hideGameOver() {
     this._gameOverActive = false;
-    if (this._currentVideo) {
-      this._currentVideo.pause();
-      this._currentVideo.currentTime = 0;
-      this._currentVideo = null;
+    
+    if (!this._gameOverGif) {
+      this._gameOverGif = document.getElementById('gameover-gif');
+    }
+    
+    if (this._gameOverGif) {
+      this._gameOverGif.classList.remove('visible');
+      this._gameOverGif.classList.add('hidden');
     }
   }
 
   renderStartScreen(ctx, isNight = false, spriteManager = null) {
     const w = this._width;
     const h = this._height;
-    const textColor = isNight ? '#e0e0e0' : '#333333';
-    const subColor = isNight ? '#aaaaaa' : '#666666';
+    
+    // Add semi-transparent overlay so UI is visible over video background
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+    ctx.fillRect(0, 0, w, h);
+    
+    const textColor = '#ffffff'; // White text for visibility
+    const subColor = '#cccccc';
 
-    // Title
+    // Title - responsive font size
     ctx.fillStyle = textColor;
-    ctx.font = 'bold 24px Arial, sans-serif';
+    ctx.font = `bold ${this._fontSize(32)}px Arial, sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('HCS', w / 2, h * 0.15);
 
-    // Character selection area
+    // Character selection area - responsive sizing
     const charY = h * 0.45;
-    const charBoxW = 120;
-    const charBoxH = 100;
+    const charBoxW = this._scale(140);
+    const charBoxH = this._scale(120);
     const charBoxX = (w - charBoxW) / 2;
     const charBoxY = charY - charBoxH / 2;
 
     // Character box background
-    ctx.fillStyle = isNight ? 'rgba(60, 60, 80, 0.8)' : 'rgba(240, 240, 240, 0.9)';
+    ctx.fillStyle = 'rgba(40, 40, 60, 0.9)';
     ctx.beginPath();
-    ctx.roundRect(charBoxX, charBoxY, charBoxW, charBoxH, 10);
+    ctx.roundRect(charBoxX, charBoxY, charBoxW, charBoxH, this._scale(10));
     ctx.fill();
-    ctx.strokeStyle = isNight ? '#666' : '#ccc';
+    ctx.strokeStyle = '#888';
     ctx.lineWidth = 2;
     ctx.stroke();
 
-    // Draw character preview
-    const previewSize = 60;
+    // Draw character preview - responsive sizing
+    const previewSize = this._scale(70);
     const previewX = w / 2 - previewSize / 2;
-    const previewY = charY - previewSize / 2 - 5;
+    const previewY = charY - previewSize / 2 - this._scale(5);
     
     if (spriteManager && this._characters.length > 0) {
       const charId = this.selectedCharacterId;
@@ -155,51 +271,51 @@ export class UIRenderer {
       this._drawCharacterPreview(ctx, previewX, previewY, previewSize, previewSize, this.selectedCharacterId, isNight);
     }
 
-    // Character name
+    // Character name - responsive font
     ctx.fillStyle = textColor;
-    ctx.font = 'bold 14px Arial, sans-serif';
-    ctx.fillText(this.selectedCharacterName, w / 2, charBoxY + charBoxH - 12);
+    ctx.font = `bold ${this._fontSize(16)}px Arial, sans-serif`;
+    ctx.fillText(this.selectedCharacterName, w / 2, charBoxY + charBoxH - this._scale(12));
 
-    // Left arrow
-    const arrowSize = 30;
+    // Left arrow - responsive sizing
+    const arrowSize = this._scale(36);
     const arrowY = charY - arrowSize / 2;
-    const leftArrowX = charBoxX - arrowSize - 15;
+    const leftArrowX = charBoxX - arrowSize - this._scale(15);
     this._leftArrowBounds = { x: leftArrowX, y: arrowY, width: arrowSize, height: arrowSize };
 
-    ctx.fillStyle = isNight ? '#555' : '#ddd';
+    ctx.fillStyle = 'rgba(80, 80, 100, 0.9)';
     ctx.beginPath();
-    ctx.roundRect(leftArrowX, arrowY, arrowSize, arrowSize, 6);
+    ctx.roundRect(leftArrowX, arrowY, arrowSize, arrowSize, this._scale(6));
     ctx.fill();
     
     ctx.fillStyle = textColor;
-    ctx.font = 'bold 18px Arial, sans-serif';
+    ctx.font = `bold ${this._fontSize(22)}px Arial, sans-serif`;
     ctx.fillText('<', leftArrowX + arrowSize / 2, arrowY + arrowSize / 2);
 
-    // Right arrow
-    const rightArrowX = charBoxX + charBoxW + 15;
+    // Right arrow - responsive sizing
+    const rightArrowX = charBoxX + charBoxW + this._scale(15);
     this._rightArrowBounds = { x: rightArrowX, y: arrowY, width: arrowSize, height: arrowSize };
 
-    ctx.fillStyle = isNight ? '#555' : '#ddd';
+    ctx.fillStyle = 'rgba(80, 80, 100, 0.9)';
     ctx.beginPath();
-    ctx.roundRect(rightArrowX, arrowY, arrowSize, arrowSize, 6);
+    ctx.roundRect(rightArrowX, arrowY, arrowSize, arrowSize, this._scale(6));
     ctx.fill();
     
     ctx.fillStyle = textColor;
     ctx.fillText('>', rightArrowX + arrowSize / 2, arrowY + arrowSize / 2);
 
-    // Character counter
+    // Character counter - responsive font
     ctx.fillStyle = subColor;
-    ctx.font = '11px Arial, sans-serif';
-    ctx.fillText(`${this._selectedCharacterIndex + 1} / ${this._characters.length}`, w / 2, charBoxY + charBoxH + 15);
+    ctx.font = `${this._fontSize(12)}px Arial, sans-serif`;
+    ctx.fillText(`${this._selectedCharacterIndex + 1} / ${this._characters.length}`, w / 2, charBoxY + charBoxH + this._scale(18));
 
-    // Instruction
-    ctx.fillStyle = subColor;
-    ctx.font = '14px Arial, sans-serif';
+    // Instruction - responsive font
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `${this._fontSize(16)}px Arial, sans-serif`;
     ctx.fillText('Press SPACE or Tap to Start', w / 2, h * 0.78);
 
-    // Controls hint
-    ctx.font = '11px Arial, sans-serif';
-    ctx.fillStyle = isNight ? '#888' : '#999';
+    // Controls hint - responsive font
+    ctx.font = `${this._fontSize(12)}px Arial, sans-serif`;
+    ctx.fillStyle = '#aaaaaa';
     ctx.fillText('← → to select character', w / 2, h * 0.85);
     ctx.fillText('↑/SPACE = Jump   ↓ = Duck   ESC = Pause', w / 2, h * 0.91);
 
@@ -207,29 +323,52 @@ export class UIRenderer {
     ctx.textBaseline = 'alphabetic';
   }
 
-  renderHUD(ctx, scoreDisplay, highScoreDisplay, isMilestoneFlashing, isNight = false, coins = 0) {
+  renderHUD(ctx, scoreDisplay, highScoreDisplay, isMilestoneFlashing, isNight = false, coins = 0, trumpCardActive = false, trumpCardTime = 0, einsteinCardActive = false, einsteinCardTime = 0) {
     const w = this._width;
     const textColor = isNight ? '#e0e0e0' : '#333333';
     const subColor = isNight ? '#999999' : '#888888';
+    const padding = this._scale(15);
+    const baseFontSize = this._fontSize(16);
 
-    ctx.font = 'bold 14px Arial, sans-serif';
+    ctx.font = `bold ${baseFontSize}px Arial, sans-serif`;
     ctx.textAlign = 'right';
     ctx.textBaseline = 'alphabetic';
 
+    // Trump Card indicator (if active)
+    if (trumpCardActive) {
+      // Flashing 2X indicator
+      const flash = Math.floor(Date.now() / 200) % 2 === 0;
+      ctx.fillStyle = flash ? '#ff4444' : '#ffd700';
+      ctx.font = `bold ${this._fontSize(18)}px Arial, sans-serif`;
+      ctx.fillText(`🃏 2X PENNY (${trumpCardTime}s)`, w - padding, this._scale(52));
+      ctx.font = `bold ${baseFontSize}px Arial, sans-serif`;
+    }
+
+    // Bigstin Card indicator (if active)
+    if (einsteinCardActive) {
+      // Flashing ghost mode indicator
+      const flash = Math.floor(Date.now() / 250) % 2 === 0;
+      ctx.fillStyle = flash ? '#2196f3' : '#9c27b0';
+      ctx.font = `bold ${this._fontSize(18)}px Arial, sans-serif`;
+      const yPos = trumpCardActive ? this._scale(78) : this._scale(52); // Stack below Trump Card if both active
+      ctx.fillText(`👻 GHOST MODE (${einsteinCardTime}s)`, w - padding, yPos);
+      ctx.font = `bold ${baseFontSize}px Arial, sans-serif`;
+    }
+
     // Coin count (leftmost)
-    ctx.fillStyle = '#ffc107';
-    ctx.fillText('\u00A2 ' + coins, w - 170, 24);
+    ctx.fillStyle = trumpCardActive ? '#ffd700' : '#ffc107';
+    ctx.fillText('\u00A2 ' + coins + (trumpCardActive ? ' (2X!)' : ''), w - this._scale(180), this._scale(26));
 
     // High score
     ctx.fillStyle = subColor;
-    ctx.fillText(highScoreDisplay, w - 90, 24);
+    ctx.fillText(highScoreDisplay, w - this._scale(95), this._scale(26));
 
     // Current score (with flash effect)
     if (isMilestoneFlashing && Math.floor(Date.now() / 100) % 2 === 0) {
       // Don't draw — creates flash effect
     } else {
       ctx.fillStyle = textColor;
-      ctx.fillText(scoreDisplay, w - 15, 24);
+      ctx.fillText(scoreDisplay, w - padding, this._scale(26));
     }
 
     ctx.textAlign = 'left';
@@ -238,6 +377,9 @@ export class UIRenderer {
   renderGameOver(ctx, scoreDisplay, isNight = false, coins = 0) {
     const w = this._width;
     const h = this._height;
+    
+    // Detect mobile (portrait or small screen)
+    const isMobile = h > w || w < 768;
 
     // Dark overlay
     ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
@@ -249,40 +391,69 @@ export class UIRenderer {
     // Calculate Giga Level (every 5 pennies = 1 level, max 99)
     const gigaLevel = Math.min(99, Math.floor(coins / 5));
 
-    // Layout calculations
-    let currentY = h * 0.2;
-    const lineSpacing = 35;
+    // GIF plays in HTML element (positioned via CSS)
+    // Leave space for it in the middle
+    // On mobile, position text lower to give more room for GIF
 
-    // 1. GAME OVER title
-    ctx.fillStyle = '#ff4444';
-    ctx.font = 'bold 32px Arial, sans-serif';
-    ctx.fillText('GAME OVER', w / 2, currentY);
-    currentY += lineSpacing + 15;
-
-    // 2. Penny Collected
+    // Penny Collected (below GIF area) - responsive font
+    // Mobile: position at 60%, Desktop: 68%
+    const pennyY = isMobile ? h * 0.58 : h * 0.68;
     ctx.fillStyle = '#ffc107';
-    ctx.font = 'bold 18px Arial, sans-serif';
-    ctx.fillText('Penny Collected: ' + coins, w / 2, currentY);
-    currentY += lineSpacing;
+    ctx.font = `bold ${this._fontSize(isMobile ? 16 : 20)}px Arial, sans-serif`;
+    ctx.fillText('Penny Collected: ' + coins, w / 2, pennyY);
 
-    // 3. Giga Level with color based on level
+    // Giga Level with color based on level - responsive font
     let levelColor = '#ffffff';
-    if (gigaLevel >= 50) levelColor = '#ff00ff'; // Purple for 50+
-    else if (gigaLevel >= 30) levelColor = '#ff4444'; // Red for 30+
-    else if (gigaLevel >= 20) levelColor = '#ff9800'; // Orange for 20+
-    else if (gigaLevel >= 10) levelColor = '#4caf50'; // Green for 10+
-    else if (gigaLevel >= 5) levelColor = '#2196f3'; // Blue for 5+
+    if (gigaLevel >= 50) levelColor = '#ff00ff';
+    else if (gigaLevel >= 30) levelColor = '#ff4444';
+    else if (gigaLevel >= 20) levelColor = '#ff9800';
+    else if (gigaLevel >= 10) levelColor = '#4caf50';
+    else if (gigaLevel >= 5) levelColor = '#2196f3';
     
+    // Mobile: position at 65%, Desktop: 74%
+    const levelY = isMobile ? h * 0.64 : h * 0.74;
     ctx.fillStyle = levelColor;
-    ctx.font = 'bold 20px Arial, sans-serif';
-    ctx.fillText('Giga Level: ' + gigaLevel, w / 2, currentY);
-    currentY += lineSpacing + 20;
+    ctx.font = `bold ${this._fontSize(isMobile ? 18 : 24)}px Arial, sans-serif`;
+    ctx.fillText('Giga Level: ' + gigaLevel, w / 2, levelY);
 
-    // 4. Play Again button
-    const btnW = 180;
-    const btnH = 50;
+    // Switch Player button (above Play Again) - responsive sizing
+    // Mobile: smaller buttons, positioned lower
+    const switchBtnW = this._scale(isMobile ? 140 : 170);
+    const switchBtnH = this._scale(isMobile ? 38 : 45);
+    const switchBtnX = (w - switchBtnW) / 2;
+    const switchBtnY = isMobile ? h * 0.72 : h * 0.80;
+    this._switchPlayerBounds = { x: switchBtnX, y: switchBtnY, width: switchBtnW, height: switchBtnH };
+
+    // Switch button background with purple gradient
+    const switchGradient = ctx.createLinearGradient(switchBtnX, switchBtnY, switchBtnX, switchBtnY + switchBtnH);
+    switchGradient.addColorStop(0, '#7b1fa2');
+    switchGradient.addColorStop(1, '#4a148c');
+    ctx.fillStyle = switchGradient;
+    ctx.beginPath();
+    ctx.roundRect(switchBtnX, switchBtnY, switchBtnW, switchBtnH, this._scale(10));
+    ctx.fill();
+
+    // Switch button border
+    ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Switch button text - responsive font
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `bold ${this._fontSize(isMobile ? 14 : 16)}px Arial, sans-serif`;
+    ctx.fillText('\u21C4  SWITCH PLAYER', w / 2, switchBtnY + switchBtnH / 2);
+
+    // Show current character name below switch button
+    ctx.fillStyle = '#aaaaaa';
+    ctx.font = `${this._fontSize(isMobile ? 11 : 13)}px Arial, sans-serif`;
+    ctx.fillText(`Current: ${this.selectedCharacterName} (${this._selectedCharacterIndex + 1}/${this._characters.length})`, w / 2, switchBtnY + switchBtnH + this._scale(12));
+
+    // Play Again button - responsive sizing
+    // Mobile: smaller buttons, positioned lower
+    const btnW = this._scale(isMobile ? 160 : 200);
+    const btnH = this._scale(isMobile ? 45 : 55);
     const btnX = (w - btnW) / 2;
-    const btnY = currentY;
+    const btnY = isMobile ? h * 0.82 : h * 0.88;
     this._playAgainBounds = { x: btnX, y: btnY, width: btnW, height: btnH };
 
     // Button background with gradient
@@ -291,7 +462,7 @@ export class UIRenderer {
     gradient.addColorStop(1, '#2e7d32');
     ctx.fillStyle = gradient;
     ctx.beginPath();
-    ctx.roundRect(btnX, btnY, btnW, btnH, 12);
+    ctx.roundRect(btnX, btnY, btnW, btnH, this._scale(12));
     ctx.fill();
 
     // Button border
@@ -299,17 +470,10 @@ export class UIRenderer {
     ctx.lineWidth = 1;
     ctx.stroke();
 
-    // Button text
+    // Button text - responsive font
     ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 18px Arial, sans-serif';
+    ctx.font = `bold ${this._fontSize(isMobile ? 16 : 20)}px Arial, sans-serif`;
     ctx.fillText('\u25B6  PLAY AGAIN', w / 2, btnY + btnH / 2);
-
-    currentY += btnH + 20;
-
-    // 5. Press SPACE hint
-    ctx.fillStyle = '#888888';
-    ctx.font = '14px Arial, sans-serif';
-    ctx.fillText('Press SPACE to play again', w / 2, currentY);
 
     ctx.textAlign = 'left';
     ctx.textBaseline = 'alphabetic';
@@ -355,8 +519,11 @@ export class UIRenderer {
   }
 
   renderMuteButton(ctx, isMuted, isNight = false) {
+    // Detect mobile for positioning
+    const isMobile = this._height > this._width || this._width < 768;
+    
     const x = 10;
-    const y = 10;
+    const y = isMobile ? 180 : 10;  // Even lower on mobile (was 160)
     const size = 22;
     this._muteButtonBounds = { x, y, width: size + 5, height: size };
 
@@ -397,9 +564,74 @@ export class UIRenderer {
     }
   }
 
+  renderChatButton(ctx, unreadCount = 0, isNight = false) {
+    // Detect mobile for positioning
+    const isMobile = this._height > this._width || this._width < 768;
+    
+    const x = 45; // Position next to mute button
+    const y = isMobile ? 180 : 10;  // Even lower on mobile (was 160, same as mute button)
+    const size = 22;
+    this._chatButtonBounds = { x, y, width: size + 5, height: size };
+
+    const color = isNight ? '#aaaaaa' : '#757575';
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = 1.5;
+
+    // Chat bubble icon
+    ctx.beginPath();
+    ctx.moveTo(x + 4, y + 6);
+    ctx.lineTo(x + 20, y + 6);
+    ctx.quadraticCurveTo(x + 22, y + 6, x + 22, y + 8);
+    ctx.lineTo(x + 22, y + 14);
+    ctx.quadraticCurveTo(x + 22, y + 16, x + 20, y + 16);
+    ctx.lineTo(x + 10, y + 16);
+    ctx.lineTo(x + 6, y + 20);
+    ctx.lineTo(x + 6, y + 16);
+    ctx.lineTo(x + 4, y + 16);
+    ctx.quadraticCurveTo(x + 2, y + 16, x + 2, y + 14);
+    ctx.lineTo(x + 2, y + 8);
+    ctx.quadraticCurveTo(x + 2, y + 6, x + 4, y + 6);
+    ctx.closePath();
+    ctx.stroke();
+
+    // Chat dots inside bubble
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(x + 8, y + 11, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(x + 12, y + 11, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(x + 16, y + 11, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Unread badge
+    if (unreadCount > 0) {
+      const badgeX = x + size - 2;
+      const badgeY = y - 2;
+      const badgeText = unreadCount > 9 ? '9+' : String(unreadCount);
+      
+      ctx.fillStyle = '#ff4444';
+      ctx.beginPath();
+      ctx.arc(badgeX, badgeY + 6, 8, 0, Math.PI * 2);
+      ctx.fill();
+      
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 9px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(badgeText, badgeX, badgeY + 6);
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'alphabetic';
+    }
+  }
+
   resize(width, height) {
     this._width = width;
     this._height = height;
+    this._updateScaleFactor();
   }
 
   /**
@@ -407,13 +639,13 @@ export class UIRenderer {
    */
   _drawCharacterPreview(ctx, x, y, w, h, characterId, isNight) {
     if (characterId === 'player2') {
-      // Speedy - Slim, fast-looking character (blue)
+      // Jewgoblin - Green goblin
       this._drawSpeedyPreview(ctx, x, y, w, h, isNight);
     } else if (characterId === 'player3') {
-      // Tank - Big, bulky character (red/orange)
+      // Jewman - Victorian gentleman
       this._drawTankPreview(ctx, x, y, w, h, isNight);
     } else {
-      // Default dino shape (green) - Jewasaur
+      // Default dino shape (green) - Jewasaur (also fallback for player4 until sprites uploaded)
       this._drawDefaultPreview(ctx, x, y, w, h, isNight);
     }
   }
